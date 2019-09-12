@@ -295,8 +295,8 @@ def output_results_csv(closest_matches_sorted, start_time, image_name, max_len_c
                                            person_count) + '.csv'), index=False)
 
 
-def ouput_results_image(closest_matches_sorted, start_time, image_name, max_len_closest_matches, file_count,
-                        person_count):
+def output_results_image(closest_matches_sorted, start_time, image_name, max_len_closest_matches, file_count,
+                         person_count):
     """
 
     :param closest_matches_sorted:
