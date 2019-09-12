@@ -11,7 +11,7 @@ if __name__ == "__main__":
 
     image3 = face_recognition.load_image_file(os.path.join(os.getcwd(), os.path.join(os.path.join('inputs', 'image3.jpg'))))
     encodings3 = face_recognition.face_encodings(image3)
-    
+
     print("Face distance between 1 and 2: " + str(face_recognition.face_distance(encodings1, encodings2[0])[0]))
     print("Face distance between 1 and 3: " + str(face_recognition.face_distance(encodings1, encodings3[0])[0]))
     print("Face distance between 2 and 3: " + str(face_recognition.face_distance(encodings2, encodings3[0])[0]))
