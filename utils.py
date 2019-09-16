@@ -36,29 +36,12 @@ def timesince(time, percent_done):
         return ("Cannot calculate times done and remaining at this time")
 
 
-def get_user_inputs():
+def choose_input_image(potential_images):
     """
-
-    :return:
+    
+    :param potential_images: 
+    :return: 
     """
-    max_len_closest_matches = input("How many closest matches do you want to see? (leave blank for 10)")
-    i_max = input("How many people's faces do you want to compare with? (leave blank for all)")
-
-    if max_len_closest_matches == "":
-        max_len_closest_matches = 10
-
-    max_len_closest_matches = int(max_len_closest_matches)
-
-    person_count = len(([len(files) for r, d, files in os.walk(lfw_path)])) - 1
-
-    if i_max == "":
-        i_max = person_count
-
-    i_max = int(i_max)
-
-    potential_images = [x for x in os.listdir(os.path.join(data_path, 'inputs')) if
-                        x.split('.')[1] in ALLOWED_PICTURE_FILE_TYPES]
-
     for x in itertools.cycle(potential_images):
         response = input("Comparing " + x + "? (y for yes, n or no)")
         while response not in ['y', 'n']:
@@ -68,32 +51,61 @@ def get_user_inputs():
             image_name = x
             break
 
-    image_path = os.path.join(os.path.join(data_path, 'inputs'), image_name)
+    print("")
 
-    return i_max, max_len_closest_matches, image_name, person_count, image_path
+    return image_name
 
 
-def get_number_of_pics_to_compare_with(i_max, lfw_path, person_count, image_name):
+def get_user_inputs():
     """
 
-    :param i_max:
+    :return:
+    """
+    max_len_closest_matches = input("How many closest matches do you want to see? (leave blank for 10)")
+    n_people_to_compare_with = input("How many people's faces do you want to compare with? (leave blank for all)")
+
+    if max_len_closest_matches == "":
+        max_len_closest_matches = 10
+
+    max_len_closest_matches = int(max_len_closest_matches)
+
+    person_count = len(([len(files) for r, d, files in os.walk(lfw_path)])) - 1
+
+    if n_people_to_compare_with == "":
+        n_people_to_compare_with = person_count
+
+    n_people_to_compare_with = int(n_people_to_compare_with)
+
+    potential_images = [x for x in os.listdir(os.path.join(data_path, 'inputs')) if
+                        x.split('.')[1] in ALLOWED_PICTURE_FILE_TYPES]
+
+    image_name = choose_input_image(potential_images)
+
+    image_path = os.path.join(os.path.join(data_path, 'inputs'), image_name)
+
+    return n_people_to_compare_with, max_len_closest_matches, image_name, person_count, image_path
+
+
+def get_number_of_pics_to_compare_with(n_people_to_compare_with, lfw_path, person_count, image_name):
+    """
+
+    :param n_people_to_compare_with:
     :param lfw_path:
     :return:
     """
 
     file_count = 0
     person_no = 0
-
     for root, dirs, files in os.walk(lfw_path):
-        if person_no <= i_max:
+        if person_no <= n_people_to_compare_with:
             person_no += 1
             file_count += len([x for x in files if x != "Thumbs.db"])
         else:
             break
 
-    if i_max < person_count:
-        person_count = i_max
-        file_count = sum([len(files) for r, d, files in os.walk(lfw_path)][1:(i_max + 1)])
+    if n_people_to_compare_with < person_count:
+        person_count = n_people_to_compare_with
+        file_count = sum([len(files) for r, d, files in os.walk(lfw_path)][1:(n_people_to_compare_with + 1)])
         print(
             "\n" + str(file_count) + " images of " + str(person_count) + " people to compare with " + image_name + "\n")
 
@@ -113,7 +125,8 @@ def get_image_encodings(image_path):
     return encodings
 
 
-def compare_face_with_original(folder, file, encodings, file_count, person_count, image_name, j, i):
+def compare_face_with_original(folder, file, encodings, file_count, n_people_to_compare_with, image_name, image_counter,
+                               person_counter):
     """
 
     :param folder:
@@ -126,9 +139,10 @@ def compare_face_with_original(folder, file, encodings, file_count, person_count
     :param i:
     :return:
     """
-    print("Comparing image " + str(j) + " of " + str(file_count) + " (" + str(
-        round(100 * (j - 1) / file_count, 2)) +
-          "% complete), person " + str(i) + " of " + str(person_count) + ", file " + os.path.join(
+    print("Comparing image " + str(image_counter + 1) + " of " + str(file_count) + " (" + str(
+        round(100 * image_counter / file_count, 2)) +
+          "% complete), person " + str(person_counter + 1) + " of " + str(
+        n_people_to_compare_with) + ", file " + os.path.join(
         os.path.join(folder, file)) + " with " + image_name)
 
     lfw_face_encodings = get_image_encodings(
@@ -192,7 +206,7 @@ def add_face_to_closest_matches_if_closer_than_current_closest_mathes(filename, 
     return closest_matches, closest_matches_distances, index_min
 
 
-def print_update(image_name, closest_matches, index_min, start_time, file_count, j):
+def print_update(image_name, closest_matches, index_min, start_time, file_count, image_counter):
     """
 
     :param image_name:
@@ -200,15 +214,16 @@ def print_update(image_name, closest_matches, index_min, start_time, file_count,
     :param index_min:
     :param start_time:
     :param file_count:
+    :param image_counter:
     :return:
     """
     print("Current closest lookalike to " + image_name + " is " + closest_matches[index_min][
         0] + " with a distance of " + str(round(closest_matches[index_min][1], 3)))
-    print(timesince(start_time, 100 * (j - 1) / file_count) + "\n")
+    print(timesince(start_time, 100 * image_counter / file_count) + "\n")
 
 
-def compare_with_all_other_images(lfw_path, file_count, person_count, encodings, image_name, max_len_closest_matches,
-                                  start_time, i_max):
+def compare_with_other_images(lfw_path, file_count, encodings, image_name, max_len_closest_matches,
+                              start_time, n_people_to_compare_with):
     """
 
     :param lfw_path:
@@ -218,17 +233,17 @@ def compare_with_all_other_images(lfw_path, file_count, person_count, encodings,
     :param image_name:
     :param max_len_closest_matches:
     :param start_time:
-    :param i_max:
+    :param n_people_to_compare_with:
     :return:
     """
     closest_matches = []
-    i = 1
-    j = 1
 
-    for folder in os.listdir(lfw_path):
+    image_counter = 0
+    for person_counter, folder in enumerate(os.listdir(lfw_path)):
         for file in os.listdir(os.path.join(lfw_path, folder)):
-            filename, distance = compare_face_with_original(folder, file, encodings, file_count, person_count,
-                                                            image_name, j, i)
+            filename, distance = compare_face_with_original(folder, file, encodings, file_count,
+                                                            n_people_to_compare_with,
+                                                            image_name, image_counter, person_counter)
 
             if len(closest_matches) < max_len_closest_matches:
                 closest_matches, closest_matches_distances, index_min = add_face_to_closest_matches(filename, distance,
@@ -237,11 +252,11 @@ def compare_with_all_other_images(lfw_path, file_count, person_count, encodings,
                 closest_matches, closest_matches_distances, index_min = add_face_to_closest_matches_if_closer_than_current_closest_mathes(
                     filename, distance, closest_matches, closest_matches_distances, index_min)
 
-            print_update(image_name, closest_matches, index_min, start_time, file_count, j)
+            print_update(image_name, closest_matches, index_min, start_time, file_count, image_counter)
 
-            j += 1
-        i += 1
-        if i > i_max:
+            image_counter += 1
+
+        if person_counter == (n_people_to_compare_with - 1):
             break
 
     closest_matches_sorted = sorted(closest_matches, key=itemgetter(1))
@@ -264,7 +279,7 @@ def print_results(closest_matches_sorted, image_path):
         print(result[0], ": " + str(round(result[1], 3)))
 
 
-def generate_runstr(start_time, image_name, max_len_closest_matches, file_count, person_count):
+def generate_runstr(start_time, image_name, max_len_closest_matches, file_count, n_people_to_compare_with):
     """
 
     :param start_time:
@@ -277,26 +292,26 @@ def generate_runstr(start_time, image_name, max_len_closest_matches, file_count,
 
     runstr = start_time.strftime("%Y_%m_%d__%H_%M") + '_run_top_' + str(max_len_closest_matches) + \
              "_lookalikes_for_" + image_name.replace(".", "_") + "_from_" + str(file_count) + "_images_of_" + str(
-        person_count) + "_people"
+        n_people_to_compare_with) + "_people"
 
     return runstr
 
 
 def output_results_csv(closest_matches_sorted, start_time, image_name, max_len_closest_matches, file_count,
-                       person_count):
+                       n_people_to_compare_with):
     """
 
     :param closest_matches_sorted:
     :return:
     """
-    df = pd.DataFrame(closest_matches_sorted, columns=['person', 'facial distance'])
-    df.to_csv(os.path.join(os.path.join(data_path, 'results'),
-                           generate_runstr(start_time, image_name, max_len_closest_matches, file_count,
-                                           person_count) + '.csv'), index=False)
+    results = pd.DataFrame(closest_matches_sorted, columns=['person', 'facial distance'])
+    results.to_csv(os.path.join(os.path.join(data_path, 'results'),
+                                generate_runstr(start_time, image_name, max_len_closest_matches, file_count,
+                                                n_people_to_compare_with) + '.csv'), index=False)
 
 
 def output_results_image(closest_matches_sorted, start_time, image_name, max_len_closest_matches, file_count,
-                         person_count):
+                         n_people_to_compare_with):
     """
 
     :param closest_matches_sorted:
@@ -312,7 +327,7 @@ def output_results_image(closest_matches_sorted, start_time, image_name, max_len
     combined = np.concatenate(images, axis=1)
     cv2.imwrite(os.path.join(os.path.join(data_path, 'results'),
                              generate_runstr(start_time, image_name, max_len_closest_matches, file_count,
-                                             person_count) + '.jpg'), combined)
+                                             n_people_to_compare_with) + '.jpg'), combined)
 
 
 def get_start_time():
