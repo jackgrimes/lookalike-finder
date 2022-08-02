@@ -1,4 +1,4 @@
-lfw_path = r"C:\dev\data\lfw"
-data_path = r"C:\dev\data\lookalike_finder"
+lfw_path = r"/Users/jack/dev/data/lfw"
+data_path = r"/Users/jack/dev/data/lookalike_finder"
 
-ALLOWED_PICTURE_FILE_TYPES = ['jpg']
+ALLOWED_PICTURE_FILE_TYPES = ["jpg"]
