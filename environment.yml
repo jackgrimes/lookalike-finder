@@ -12,3 +12,4 @@ dependencies:
     - opencv-python==4.4.0.42
     - matplotlib==3.0.3
     - pre-commit==1.21.0
+    - tqdm==4.64.0

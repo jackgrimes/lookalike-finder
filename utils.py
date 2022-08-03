@@ -1,14 +1,28 @@
 import datetime
 import itertools
+import logging
 import os
-from operator import itemgetter
 
 import cv2
 import face_recognition
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from configs import lfw_path, data_path, ALLOWED_PICTURE_FILE_TYPES
+
+logging.basicConfig(
+    format="%(asctime)s %(message)s",
+    level=logging.DEBUG,
+    datefmt="%m/%d/%Y %I:%M:%S %p",
+)
+logFormatter = logging.Formatter(
+    "%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+
+tqdm.pandas()
 
 
 def timesince(time, percent_done):
@@ -77,8 +91,6 @@ def get_numbers_of_images(max_len_closest_matches, n_people_to_compare_with):
     if max_len_closest_matches == "":
         max_len_closest_matches = 10
 
-    max_len_closest_matches = int(max_len_closest_matches)
-
     person_count = len(([len(files) for r, d, files in os.walk(lfw_path)])) - 1
 
     if n_people_to_compare_with is None:
@@ -86,21 +98,11 @@ def get_numbers_of_images(max_len_closest_matches, n_people_to_compare_with):
 
     n_people_to_compare_with = int(n_people_to_compare_with)
 
-    potential_images = [
-        x
-        for x in os.listdir(os.path.join(data_path, "inputs"))
-        if x.split(".")[1] in ALLOWED_PICTURE_FILE_TYPES
-    ]
-
-    image_name = choose_input_image(potential_images)
-
-    image_path = os.path.join(os.path.join(data_path, "inputs"), image_name)
-
-    return n_people_to_compare_with, image_name, person_count, image_path
+    return n_people_to_compare_with, person_count
 
 
 def get_number_of_pics_to_compare_with(
-    n_people_to_compare_with, lfw_path, person_count, image_name
+    n_people_to_compare_with, lfw_path, person_count
 ):
     """
 
@@ -125,89 +127,14 @@ def get_number_of_pics_to_compare_with(
                 1 : (n_people_to_compare_with + 1)
             ]
         )
-        print(
-            "\n"
-            + str(file_count)
+        logger.debug(
+            str(file_count)
             + " images of "
             + str(person_count)
             + " people to compare with "
-            + image_name
-            + "\n"
         )
 
     return file_count
-
-
-def get_image_encodings(image_path):
-    """
-
-    :param image_name:
-    :return:
-    """
-
-    image = face_recognition.load_image_file(image_path)
-    encodings = face_recognition.face_encodings(image)
-
-    return encodings
-
-
-def compare_face_with_original(
-    folder,
-    file,
-    encodings,
-    file_count,
-    n_people_to_compare_with,
-    image_name,
-    image_counter,
-    person_counter,
-):
-    """
-
-    :param folder:
-    :param file:
-    :param encodings:
-    :param file_count:
-    :param person_count:
-    :param image_name:
-    :param j:
-    :param i:
-    :return:
-    """
-    print(
-        "Comparing image "
-        + str(image_counter + 1)
-        + " of "
-        + str(file_count)
-        + " ("
-        + str(round(100 * image_counter / file_count, 2))
-        + "% complete), person "
-        + str(person_counter + 1)
-        + " of "
-        + str(n_people_to_compare_with)
-        + ", file "
-        + os.path.join(os.path.join(folder, file))
-        + " with "
-        + image_name
-    )
-
-    lfw_face_encodings = get_image_encodings(
-        os.path.join(
-            os.getcwd(),
-            os.path.join(os.path.join(lfw_path, os.path.join(folder, file))),
-        )
-    )
-
-    if len(lfw_face_encodings) == 0:
-        distance = np.NaN
-        print("no face found")
-
-    else:
-        distance = face_recognition.face_distance(lfw_face_encodings, encodings[0])[0]
-        print("Distance is: " + str(round(distance, 3)))
-
-    filename = os.path.join(folder, file)
-
-    return filename, distance
 
 
 def get_closest_matches_distances(closest_matches):
@@ -288,13 +215,7 @@ def print_update(
 
 
 def compare_with_other_images(
-    lfw_path,
-    file_count,
-    encodings,
-    image_name,
-    max_len_closest_matches,
-    start_time,
-    n_people_to_compare_with,
+    encodings, n_people_to_compare_with, images_and_encodings
 ):
     """
 
@@ -308,58 +229,18 @@ def compare_with_other_images(
     :param n_people_to_compare_with:
     :return:
     """
-    closest_matches = []
 
-    image_counter = 0
-    for person_counter, folder in enumerate(os.listdir(lfw_path)):
-        for file in os.listdir(os.path.join(lfw_path, folder)):
-            filename, distance = compare_face_with_original(
-                folder,
-                file,
-                encodings,
-                file_count,
-                n_people_to_compare_with,
-                image_name,
-                image_counter,
-                person_counter,
-            )
+    if n_people_to_compare_with < len(images_and_encodings):
+        images_and_encodings = images_and_encodings.sample(n_people_to_compare_with)
 
-            if len(closest_matches) < max_len_closest_matches:
-                (
-                    closest_matches,
-                    closest_matches_distances,
-                    index_min,
-                ) = add_face_to_closest_matches(filename, distance, closest_matches)
-            else:
-                (
-                    closest_matches,
-                    closest_matches_distances,
-                    index_min,
-                ) = add_face_to_closest_matches_if_closer_than_current_closest_mathes(
-                    filename,
-                    distance,
-                    closest_matches,
-                    closest_matches_distances,
-                    index_min,
-                )
+    logger.debug("Getting face distances")
+    images_and_encodings["face_distance"] = images_and_encodings[
+        "lfw_encodings"
+    ].progress_apply(lambda x: face_recognition.face_distance(x, encodings)[0])
 
-            print_update(
-                image_name,
-                closest_matches,
-                index_min,
-                start_time,
-                file_count,
-                image_counter,
-            )
+    images_and_encodings.sort_values("face_distance", inplace=True)
 
-            image_counter += 1
-
-        if person_counter == (n_people_to_compare_with - 1):
-            break
-
-    closest_matches_sorted = sorted(closest_matches, key=itemgetter(1))
-
-    return closest_matches_sorted
+    return images_and_encodings
 
 
 def print_results(closest_matches_sorted, image_path):
@@ -486,3 +367,80 @@ def get_start_time():
     """
     start_time = datetime.datetime.now()
     return start_time
+
+
+def get_encodings_from_path(p):
+    # todo: should compare with other faces in folder in case it picks the wrong face
+    image = face_recognition.load_image_file(p)
+    encodings = face_recognition.face_encodings(image)
+    return encodings
+
+
+def read_encodings_from_images():
+    images_and_encodings = pd.DataFrame(
+        [(r, os.path.join(r, f)) for r, d, files in os.walk(lfw_path) for f in files],
+        columns=["person", "image_path"],
+    )
+
+    encodings = images_and_encodings["image_path"].progress_apply(
+        get_encodings_from_path
+    )
+
+    encodings = encodings[encodings.apply(len) > 0].apply(lambda x: x[0])
+
+    encodings_df = pd.DataFrame(encodings.values.tolist())
+
+    images_and_encodings = pd.concat([images_and_encodings, encodings_df], axis=1)
+
+    return images_and_encodings
+
+
+def get_lfw_face_encodings():
+    # todo: something going wrong here
+    encodings_absent = (
+        len(
+            [
+                f
+                for f in os.listdir(os.path.join(data_path, "encodings"))
+                if f.endswith(".csv")
+            ]
+        )
+        == 0
+    )
+
+    if encodings_absent:
+
+        logger.debug("Getting encodings from images")
+
+        images_and_encodings = read_encodings_from_images()
+
+        images_and_encodings.to_csv(
+            os.path.join(data_path, "encodings", "encodings.csv"), index=False
+        )
+
+    else:
+        images_and_encodings = pd.read_csv(
+            os.path.join(data_path, "encodings", "encodings.csv")
+        )
+
+        encodings = images_and_encodings.drop(["person", "image_path"], axis=1).apply(
+            np.array, axis=1
+        )
+
+        images_and_encodings = pd.concat(
+            [images_and_encodings[["person", "image_path"]], encodings], axis=1
+        )
+        images_and_encodings.rename(columns={0: "lfw_encodings"}, inplace=True)
+
+    return images_and_encodings
+
+
+def get_input_image():
+    potential_images = [
+        x
+        for x in os.listdir(os.path.join(data_path, "inputs"))
+        if x.split(".")[1] in ALLOWED_PICTURE_FILE_TYPES
+    ]
+    image_name = choose_input_image(potential_images)
+    image_path = os.path.join(os.path.join(data_path, "inputs"), image_name)
+    return image_path
