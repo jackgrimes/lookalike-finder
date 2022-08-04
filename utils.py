@@ -238,7 +238,7 @@ def compare_with_other_images(
         "lfw_encodings"
     ].progress_apply(lambda x: face_recognition.face_distance(x, encodings)[0])
 
-    images_and_encodings.sort_values("face_distance", inplace=True)
+    images_and_encodings.sort_values(["face_distance"], inplace=True)
 
     return images_and_encodings
 
@@ -386,9 +386,15 @@ def read_encodings_from_images():
         get_encodings_from_path
     )
 
-    encodings = encodings[encodings.apply(len) > 0].apply(lambda x: x[0])
+    encodings.index = images_and_encodings.index
+
+    images_and_encodings = images_and_encodings[encodings.apply(len) > 0]
+    encodings = encodings[encodings.apply(len) > 0]
+
+    encodings = encodings.apply(lambda x: x[0])
 
     encodings_df = pd.DataFrame(encodings.values.tolist())
+    encodings_df.index = images_and_encodings.index
 
     images_and_encodings = pd.concat([images_and_encodings, encodings_df], axis=1)
 
@@ -427,6 +433,7 @@ def get_lfw_face_encodings():
             np.array, axis=1
         )
 
+        # todo: note failing on first run when extracting encodings from images
         images_and_encodings = pd.concat(
             [images_and_encodings[["person", "image_path"]], encodings], axis=1
         )
