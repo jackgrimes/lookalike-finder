@@ -2,6 +2,7 @@ import datetime
 import itertools
 import logging
 import os
+import re
 
 import cv2
 import face_recognition
@@ -20,7 +21,6 @@ logFormatter = logging.Formatter(
     "%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s"
 )
 logger = logging.getLogger(__name__)
-
 
 tqdm.pandas()
 
@@ -370,39 +370,94 @@ def get_start_time():
 
 
 def get_encodings_from_path(p):
-    # todo: should compare with other faces in folder in case it picks the wrong face
     image = face_recognition.load_image_file(p)
     encodings = face_recognition.face_encodings(image)
     return encodings
 
 
+def find_best_face(person, image_path, encodings):
+    if len(encodings) == 1:
+        return encodings[0]
+    elif len(encodings) == 0:
+        return []
+    else:
+        if len(encodings) > 1:
+            logger.info(f"Finding best face for {image_path}")
+            all_images_this_person = [
+                os.path.join(person, im) for im in os.listdir(person)
+            ]
+            if len(all_images_this_person) > 1:
+                im_encodings = {}
+                other_images_this_person = all_images_this_person
+                other_images_this_person.remove(image_path)
+                for i in other_images_this_person:
+                    im_encodings[i] = get_encodings_from_path(i)
+
+                distances = []
+
+                for i, original_image_encodings in enumerate(encodings):
+                    for other_image in other_images_this_person:
+                        other_image_encodings = get_encodings_from_path(other_image)
+                        distances.append(
+                            (
+                                i,
+                                face_recognition.face_distance(
+                                    other_image_encodings, original_image_encodings
+                                ),
+                            )
+                        )
+
+                distances_df = pd.DataFrame(distances)
+
+                distances_df = (
+                    distances_df.explode(1).groupby(0).mean().reset_index(drop=False)
+                )
+
+                best_face_index = distances_df[0][distances_df[1].idxmin()]
+
+                return encodings[best_face_index]
+            else:
+                return []
+
+
 def read_encodings_from_images():
     images_and_encodings = pd.DataFrame(
-        [(r, os.path.join(r, f)) for r, d, files in os.walk(lfw_path) for f in files],
+        [
+            (r, os.path.join(r, f))
+            for r, d, files in os.walk(lfw_path)
+            for f in files
+            if ALLOWED_PICTURE_FILE_TYPES in f
+        ],
         columns=["person", "image_path"],
     )
 
-    encodings = images_and_encodings["image_path"].progress_apply(
-        get_encodings_from_path
+    images_and_encodings["encodings"] = images_and_encodings[
+        "image_path"
+    ].progress_apply(get_encodings_from_path)
+
+    images_and_encodings["optimal_encodings"] = images_and_encodings.apply(
+        lambda x: find_best_face(x.person, x.image_path, x.encodings), axis=1
     )
 
-    encodings.index = images_and_encodings.index
+    images_and_encodings.drop(columns=["encodings"], inplace=True)
 
-    images_and_encodings = images_and_encodings[encodings.apply(len) > 0]
-    encodings = encodings[encodings.apply(len) > 0]
+    images_and_encodings.rename(
+        columns={"optimal_encodings": "encodings"}, inplace=True
+    )
 
-    encodings = encodings.apply(lambda x: x[0])
-
-    encodings_df = pd.DataFrame(encodings.values.tolist())
-    encodings_df.index = images_and_encodings.index
-
-    images_and_encodings = pd.concat([images_and_encodings, encodings_df], axis=1)
+    images_and_encodings = images_and_encodings[
+        images_and_encodings["encodings"].apply(len) > 0
+    ]
 
     return images_and_encodings
 
 
 def get_lfw_face_encodings():
-    # todo: something going wrong here
+    """
+    Overall runner function
+    :return:
+    """
+
     encodings_absent = (
         len(
             [
@@ -424,30 +479,30 @@ def get_lfw_face_encodings():
             os.path.join(data_path, "encodings", "encodings.csv"), index=False
         )
 
+        images_and_encodings.rename(
+            columns={"encodings": "lfw_encodings"}, inplace=True
+        )
+
     else:
         images_and_encodings = pd.read_csv(
             os.path.join(data_path, "encodings", "encodings.csv")
         )
 
-        encodings = images_and_encodings.drop(["person", "image_path"], axis=1).apply(
-            np.array, axis=1
+        def convert_to_numpy(s):
+            s = re.sub("\n", "", s)
+            s = re.sub("[\[',\]]", "", s)
+            s = re.sub(" +", " ", s)
+            s = re.sub("( )*$", "", s)
+            li = s.split(" ")
+            li = [float(n) for n in li]
+            return np.array(li)
+
+        images_and_encodings["encodings"] = images_and_encodings["encodings"].apply(
+            convert_to_numpy
         )
 
-        # todo: note failing on first run when extracting encodings from images
-        images_and_encodings = pd.concat(
-            [images_and_encodings[["person", "image_path"]], encodings], axis=1
+        images_and_encodings.rename(
+            columns={"encodings": "lfw_encodings"}, inplace=True
         )
-        images_and_encodings.rename(columns={0: "lfw_encodings"}, inplace=True)
 
     return images_and_encodings
-
-
-def get_input_image():
-    potential_images = [
-        x
-        for x in os.listdir(os.path.join(data_path, "inputs"))
-        if x.split(".")[1] in ALLOWED_PICTURE_FILE_TYPES
-    ]
-    image_name = choose_input_image(potential_images)
-    image_path = os.path.join(os.path.join(data_path, "inputs"), image_name)
-    return image_path

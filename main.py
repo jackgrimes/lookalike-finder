@@ -12,15 +12,13 @@ from utils import (
     output_results_image,
     get_start_time,
     get_lfw_face_encodings,
-    get_input_image,
 )
 
 
-def run(n_people_to_compare_with, max_len_closest_matches):
+def run(n_people_to_compare_with, max_len_closest_matches, image_path):
 
     start_time = get_start_time()
 
-    image_path = get_input_image()
     original_image_encodings = get_encodings_from_path(image_path)
 
     images_and_encodings = get_lfw_face_encodings()
@@ -82,9 +80,17 @@ if __name__ == "__main__":
         default=10,
         help="How many closest matches do you want to see? (default 10)",
     )
+    parser.add_argument(
+        "-i",
+        "--image_path",
+        type=str,
+        default=10,
+        help="Path of image to compare against",
+    )
     args = parser.parse_args()
 
     run(
         n_people_to_compare_with=args.n_people_to_compare_with,
         max_len_closest_matches=args.max_len_closest_matches,
+        image_path=args.image_path,
     )
