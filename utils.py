@@ -2,7 +2,6 @@ import datetime
 import logging
 import os
 import re
-import time
 
 import cv2
 import face_recognition
@@ -205,12 +204,10 @@ def print_results(closest_matches_sorted, image_path):
     :param image_path:
     :return:
     """
-    logger.info("#\nRESULTS\n#\n")
-
     logger.info("Closest matches to " + image_path + ":\n")
 
     for result in closest_matches_sorted:
-        logger.info(result[0], ": " + str(round(result[1], 3)))
+        logger.info(f"{result[0]}:  {str(round(result[1], 3))}")
 
 
 def generate_runstr(
@@ -330,7 +327,20 @@ def get_encodings_from_path(p):
     return encodings
 
 
-def find_best_face(person, image_path, encodings):
+def find_best_face(person, image_path, encodings, images_and_encodings):
+    """
+    For finding the best set of encodings (handles the possibility that there are multiple people in an image)
+    Args:
+        person:
+        image_path:
+        encodings:
+        images_and_encodings:
+
+    Returns:
+
+    """
+
+    images_and_encodings = images_and_encodings.copy()
     if len(encodings) == 1:
         return encodings[0]
     elif len(encodings) == 0:
@@ -338,37 +348,54 @@ def find_best_face(person, image_path, encodings):
     else:
         if len(encodings) > 1:
             logger.info(f"Finding best face for {image_path}")
-            time.sleep(1)
-            all_images_this_person = [
-                os.path.join(person, im) for im in os.listdir(person)
-            ]
-            if len(all_images_this_person) > 1:
-                im_encodings = {}
-                other_images_this_person = all_images_this_person
-                other_images_this_person.remove(image_path)
-                for i in other_images_this_person:
-                    im_encodings[i] = get_encodings_from_path(i)
 
+            # Get all the images for this person
+            all_images_this_person = images_and_encodings[
+                images_and_encodings["person"] == person
+            ]["image_path"].to_list()
+
+            # If we have at least one other image...
+            if len(all_images_this_person) > 1:
+
+                # Get the encodings for up to 5 of the other images
+                im_encodings = {}
+                other_images_this_person = images_and_encodings[
+                    (images_and_encodings["person"] == person)
+                    & (images_and_encodings["image_path"] != image_path)
+                ]
+
+                for i in other_images_this_person["image_path"].to_list():
+
+                    im_encodings[i] = images_and_encodings[
+                        images_and_encodings["image_path"] == i
+                    ]["encodings"].to_list()
+                    if len(im_encodings.keys()) >= 5:
+                        break
+
+                # Compare the faces in the other images with the faces in the current photo of interest
                 distances = []
 
                 for i, original_image_encodings in enumerate(encodings):
-                    for other_image in other_images_this_person:
-                        other_image_encodings = get_encodings_from_path(other_image)
-                        distances.append(
-                            (
-                                i,
-                                face_recognition.face_distance(
-                                    other_image_encodings, original_image_encodings
-                                ),
+                    for other_image_encodings_set in im_encodings.values():
+                        for other_image_encodings in other_image_encodings_set:
+                            distances.append(
+                                (
+                                    i,
+                                    face_recognition.face_distance(
+                                        other_image_encodings, original_image_encodings
+                                    )[0],
+                                )
                             )
-                        )
 
                 distances_df = pd.DataFrame(distances)
 
+                # For each of the faces in the original image, get the average face distances with faces in the other
+                # images
                 distances_df = (
                     distances_df.explode(1).groupby(0).mean().reset_index(drop=False)
                 )
 
+                # Take the best face as the one looking most like the faces in the other images
                 best_face_index = distances_df[0][distances_df[1].idxmin()]
 
                 return encodings[best_face_index]
@@ -394,7 +421,10 @@ def read_encodings_from_images():
     images_and_encodings = images_and_encodings.sort_values(["image_path"])
 
     images_and_encodings["optimal_encodings"] = images_and_encodings.apply(
-        lambda x: find_best_face(x.person, x.image_path, x.encodings), axis=1
+        lambda x: find_best_face(
+            x.person, x.image_path, x.encodings, images_and_encodings
+        ),
+        axis=1,
     )
 
     images_and_encodings.drop(columns=["encodings"], inplace=True)
@@ -452,7 +482,7 @@ def get_lfw_face_encodings():
             s = re.sub("\n", "", s)
             s = re.sub("[\[',\]]", "", s)
             s = re.sub(" +", " ", s)
-            s = re.sub("( )*$", "", s)
+            s = re.sub("( )*$|^( )*", "", s)
             li = s.split(" ")
             li = [float(n) for n in li]
             return np.array(li)
