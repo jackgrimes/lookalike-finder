@@ -391,6 +391,8 @@ def read_encodings_from_images():
         "image_path"
     ].progress_apply(get_encodings_from_path)
 
+    images_and_encodings = images_and_encodings.sort_values(["image_path"])
+
     images_and_encodings["optimal_encodings"] = images_and_encodings.apply(
         lambda x: find_best_face(x.person, x.image_path, x.encodings), axis=1
     )
