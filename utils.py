@@ -426,7 +426,7 @@ def read_encodings_from_images():
             (r, os.path.join(r, f))
             for r, d, files in os.walk(lfw_path)
             for f in files
-            if ALLOWED_PICTURE_FILE_TYPES in f
+            if (sum(ft in f for ft in ALLOWED_PICTURE_FILE_TYPES) > 0)
         ],
         columns=["person", "image_path"],
     )
