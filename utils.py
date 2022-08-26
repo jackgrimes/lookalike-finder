@@ -1,8 +1,8 @@
 import datetime
-import itertools
 import logging
 import os
 import re
+import time
 
 import cv2
 import face_recognition
@@ -12,15 +12,14 @@ from tqdm import tqdm
 
 from configs import lfw_path, data_path, ALLOWED_PICTURE_FILE_TYPES
 
+logger = logging.getLogger(
+    __name__,
+)
 logging.basicConfig(
     format="%(asctime)s %(message)s",
     level=logging.DEBUG,
     datefmt="%m/%d/%Y %I:%M:%S %p",
 )
-logFormatter = logging.Formatter(
-    "%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s"
-)
-logger = logging.getLogger(__name__)
 
 tqdm.pandas()
 
@@ -61,26 +60,6 @@ def timesince(time, percent_done):
         )
     except Exception:
         return "Cannot calculate times done and remaining at this time"
-
-
-def choose_input_image(potential_images):
-    """
-
-    :param potential_images:
-    :return:
-    """
-    for x in itertools.cycle(potential_images):
-        response = input("Comparing " + x + "? (y for yes, n or no)")
-        while response not in ["y", "n"]:
-            print("enter y or n")
-            response = input("Comparing " + x + "? (y for yes, n or no)")
-        if response == "y":
-            image_name = x
-            break
-
-    print("")
-
-    return image_name
 
 
 def get_numbers_of_images(max_len_closest_matches, n_people_to_compare_with):
@@ -190,30 +169,6 @@ def add_face_to_closest_matches_if_closer_than_current_closest_mathes(
     return closest_matches, closest_matches_distances, index_min
 
 
-def print_update(
-    image_name, closest_matches, index_min, start_time, file_count, image_counter
-):
-    """
-
-    :param image_name:
-    :param closest_matches:
-    :param index_min:
-    :param start_time:
-    :param file_count:
-    :param image_counter:
-    :return:
-    """
-    print(
-        "Current closest lookalike to "
-        + image_name
-        + " is "
-        + closest_matches[index_min][0]
-        + " with a distance of "
-        + str(round(closest_matches[index_min][1], 3))
-    )
-    print(timesince(start_time, 100 * image_counter / file_count) + "\n")
-
-
 def compare_with_other_images(
     encodings, n_people_to_compare_with, images_and_encodings
 ):
@@ -250,12 +205,12 @@ def print_results(closest_matches_sorted, image_path):
     :param image_path:
     :return:
     """
-    print("#\nRESULTS\n#\n")
+    logger.info("#\nRESULTS\n#\n")
 
-    print("Closest matches to " + image_path + ":\n")
+    logger.info("Closest matches to " + image_path + ":\n")
 
     for result in closest_matches_sorted:
-        print(result[0], ": " + str(round(result[1], 3)))
+        logger.info(result[0], ": " + str(round(result[1], 3)))
 
 
 def generate_runstr(
@@ -383,6 +338,7 @@ def find_best_face(person, image_path, encodings):
     else:
         if len(encodings) > 1:
             logger.info(f"Finding best face for {image_path}")
+            time.sleep(1)
             all_images_this_person = [
                 os.path.join(person, im) for im in os.listdir(person)
             ]
@@ -484,6 +440,8 @@ def get_lfw_face_encodings():
         )
 
     else:
+        logger.info("Loading encodings from file")
+
         images_and_encodings = pd.read_csv(
             os.path.join(data_path, "encodings", "encodings.csv")
         )
