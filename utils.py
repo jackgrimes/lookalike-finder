@@ -364,6 +364,11 @@ def find_best_face(person, image_path, encodings, images_and_encodings):
                     & (images_and_encodings["image_path"] != image_path)
                 ]
 
+                # Remove images where the face wasn't found
+                other_images_this_person = other_images_this_person[
+                    other_images_this_person["encodings"].apply(len) > 0
+                ]
+
                 for i in other_images_this_person["image_path"].to_list():
 
                     im_encodings[i] = images_and_encodings[
@@ -391,16 +396,20 @@ def find_best_face(person, image_path, encodings, images_and_encodings):
 
                 # For each of the faces in the original image, get the average face distances with faces in the other
                 # images
-                distances_df = (
-                    distances_df.explode(1).groupby(0).mean().reset_index(drop=False)
-                )
+                if not distances_df.empty:
+                    distances_df = (
+                        distances_df.explode(1)
+                        .groupby(0)
+                        .mean()
+                        .reset_index(drop=False)
+                    )
 
-                # Take the best face as the one looking most like the faces in the other images
-                best_face_index = distances_df[0][distances_df[1].idxmin()]
+                    # Take the best face as the one looking most like the faces in the other images
+                    best_face_index = distances_df[0][distances_df[1].idxmin()]
 
-                return encodings[best_face_index]
-            else:
-                return []
+                    return encodings[best_face_index]
+
+            return []
 
 
 def read_encodings_from_images():
